@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Store Price List</string>
+    <string name="title_activity_main">Store Price List</string>
+    <string name="package_name">com.storepricelist.app</string>
+    <string name="custom_url_scheme">com.storepricelist.app</string>
+</resources>
