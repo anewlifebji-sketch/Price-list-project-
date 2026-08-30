@@ -1,74 +1,117 @@
 name: Build Android APK
 
 on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      - name: Find and extract project ZIP
-        shell: bash
-        run: |
-          set -e
-
-          ZIP_FILE=$(find . -maxdepth 1 -type f -name '*.zip' | head -n 1)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No project ZIP found in repository root."
-            exit 1
-          fi
-
-          echo "Using ZIP: $ZIP_FILE"
-
-          mkdir -p extracted
-          unzip -q "$ZIP_FILE" -d extracted
-
-          echo "Extracted contents:"
-          find extracted -maxdepth 3 -type f | head -100
-
-      - name: Locate Android project
-        shell: bash
-        run: |
-          set -e
-
-          ANDROID_DIR=$(find "$GITHUB_WORKSPACE/extracted" \
-            -type f -name 'gradlew' \
-            -print -quit | xargs -r dirname)
-
-          if [ -z "$ANDROID_DIR" ]; then
-            echo "ERROR: Could not find gradlew inside the extracted ZIP."
-            exit 1
-          fi
-
-          echo "Android project found at:"
-          echo "$ANDROID_DIR"
-
-          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Make Gradle Wrapper executable
-        run: chmod +x "$ANDROID_DIR/gradlew"
+      - name: Extract ZIP and Locate Project Root
+        id: prepare-project
+        run: |
+          set -e
+          echo "=== Searching for project ZIP archive ==="
+          ZIP_FILE=""
+          if [ -f "store-price-list (10).zip" ]; then
+            ZIP_FILE="store-price-list (10).zip"
+          else
+            ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" -type f | head -n 1)
+          fi
 
-      - name: Build Debug APK
-        working-directory: ${{ env.ANDROID_DIR }}
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Found ZIP file: $ZIP_FILE"
+            mkdir -p extracted_project
+            unzip -q -o "$ZIP_FILE" -d extracted_project
+            echo "ZIP extracted to directory: extracted_project"
+          else
+            echo "No ZIP archive found, using repository workspace directly."
+          fi
+
+          echo "=== Locating project root containing package.json and android/ ==="
+          PROJECT_ROOT=""
+          
+          # Check extracted paths first (handles nested subfolders from ZIP)
+          if [ -d "extracted_project" ]; then
+            for candidate in extracted_project extracted_project/* extracted_project/*/*; do
+              if [ -f "$candidate/package.json" ] && [ -d "$candidate/android" ]; then
+                PROJECT_ROOT="$candidate"
+                break
+              fi
+            done
+          fi
+
+          # Fallback to repo root or workspace subfolders if not found in extracted_project
+          if [ -z "$PROJECT_ROOT" ]; then
+            for candidate in . ./*; do
+              if [ -f "$candidate/package.json" ] && [ -d "$candidate/android" ]; then
+                PROJECT_ROOT="$candidate"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "$PROJECT_ROOT" ]; then
+            echo "ERROR: Could not locate a folder containing both package.json and android/ directory."
+            exit 1
+          fi
+
+          PROJECT_ROOT_ABS=$(cd "$PROJECT_ROOT" && pwd)
+          echo "Resolved project root: $PROJECT_ROOT_ABS"
+          echo "project_root=$PROJECT_ROOT_ABS" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        working-directory: ${{ steps.prepare-project.outputs.project_root }}
+        run: |
+          echo "Installing npm dependencies in ${{ steps.prepare-project.outputs.project_root }}"
+          if [ -f "package-lock.json" ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
+
+      - name: Build web application
+        working-directory: ${{ steps.prepare-project.outputs.project_root }}
+        run: npm run build
+
+      - name: Sync Capacitor Android
+        working-directory: ${{ steps.prepare-project.outputs.project_root }}
+        run: npx cap sync android
+
+      - name: Grant execute permission for gradlew
+        working-directory: ${{ steps.prepare-project.outputs.project_root }}/android
+        run: chmod +x gradlew
+
+      - name: Build Android APK (Debug)
+        working-directory: ${{ steps.prepare-project.outputs.project_root }}/android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Locate and upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: store-price-list-debug-apk
-          path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          name: Store-Price-List-APK
+          path: ${{ steps.prepare-project.outputs.project_root }}/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
