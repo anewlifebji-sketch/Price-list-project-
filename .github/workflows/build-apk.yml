@@ -16,10 +16,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -36,6 +36,7 @@ jobs:
           set -e
           echo "=== Searching for project ZIP archive ==="
           ZIP_FILE=""
+
           if [ -f "store-price-list (10).zip" ]; then
             ZIP_FILE="store-price-list (10).zip"
           else
@@ -53,8 +54,7 @@ jobs:
 
           echo "=== Locating project root containing package.json and android/ ==="
           PROJECT_ROOT=""
-          
-          # Check extracted paths first (handles nested subfolders from ZIP)
+
           if [ -d "extracted_project" ]; then
             for candidate in extracted_project extracted_project/* extracted_project/*/*; do
               if [ -f "$candidate/package.json" ] && [ -d "$candidate/android" ]; then
@@ -64,7 +64,6 @@ jobs:
             done
           fi
 
-          # Fallback to repo root or workspace subfolders if not found in extracted_project
           if [ -z "$PROJECT_ROOT" ]; then
             for candidate in . ./*; do
               if [ -f "$candidate/package.json" ] && [ -d "$candidate/android" ]; then
@@ -81,12 +80,12 @@ jobs:
 
           PROJECT_ROOT_ABS=$(cd "$PROJECT_ROOT" && pwd)
           echo "Resolved project root: $PROJECT_ROOT_ABS"
-          echo "project_root=$PROJECT_ROOT_ABS" >> $GITHUB_OUTPUT
+          echo "project_root=$PROJECT_ROOT_ABS" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         working-directory: ${{ steps.prepare-project.outputs.project_root }}
         run: |
-          echo "Installing npm dependencies in ${{ steps.prepare-project.outputs.project_root }}"
+          echo "Installing npm dependencies..."
           if [ -f "package-lock.json" ]; then
             npm ci || npm install
           else
