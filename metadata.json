@@ -1,0 +1,6 @@
+{
+  "name": "Store Price List",
+  "description": "Fast, dependable offline-first store price list and grocery catalog with transactional persistence, category management, atomic backup/import, and deterministic search.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
